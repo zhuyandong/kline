@@ -1,4 +1,4 @@
-name: Fetch THS Kline
+name: Fetch Daily Data
 
 on:
   schedule:
@@ -12,6 +12,8 @@ permissions:
 jobs:
   run-fetch:
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,18 +28,40 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Run fetch_kline_ths.py
-        env:
-          TZ: Asia/Shanghai
+      - name: Prepare run date
+        id: set-date
         run: |
           RUN_DATE=$(date +%F)
           echo "RUN_DATE=$RUN_DATE" >> "$GITHUB_ENV"
-          python fetch_kline_ths.py --date "$RUN_DATE"
+          echo "run_date=$RUN_DATE" >> "$GITHUB_OUTPUT"
 
-      - name: Upload generated CSV
+      - name: Run fetch_kline_ths.py
+        run: python fetch_kline_ths.py --date "$RUN_DATE"
+
+      - name: Run fetch_kline_em.py
+        run: python fetch_kline_em.py --date "$RUN_DATE"
+
+      - name: Run fetch_kline_bd.py
+        run: python fetch_kline_bd.py --date "$RUN_DATE"
+
+      - name: Run fetch_kline_qq.py
+        run: python fetch_kline_qq.py --date "$RUN_DATE"
+
+      - name: Run fetch_timesharing_qq.py
+        run: python fetch_timesharing_qq.py --date "$RUN_DATE"
+
+      - name: Run fetch_timesharing_ths.py
+        run: python fetch_timesharing_ths.py --date "$RUN_DATE"
+
+      - name: Upload generated data
         uses: actions/upload-artifact@v4
         with:
-          name: ths-kline-${{ env.RUN_DATE }}
-          path: ths
+          name: daily-data-${{ steps.set-date.outputs.run_date }}
+          path: |
+            qq
+            qq_timesharing
+            ths
+            ths_timesharing
+            em
           if-no-files-found: warn
 
