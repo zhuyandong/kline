@@ -53,6 +53,23 @@ jobs:
       - name: Run fetch_timesharing_ths.py
         run: python fetch_timesharing_ths.py --date "$RUN_DATE"
 
+      - name: Package data as zip
+        run: |
+          mkdir -p dist
+          ZIP_PATH="dist/daily-data-${RUN_DATE}.zip"
+          DATA_DIRS=""
+          for dir in qq qq_timesharing ths ths_timesharing em; do
+            if [ -d "$dir" ]; then
+              DATA_DIRS="$DATA_DIRS $dir"
+            fi
+          done
+          if [ -z "$DATA_DIRS" ]; then
+            echo "未找到需要打包的数据目录" >&2
+            exit 1
+          fi
+          zip -r "$ZIP_PATH" $DATA_DIRS
+          echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
+
       - name: Upload generated data
         uses: actions/upload-artifact@v4
         with:
@@ -64,4 +81,25 @@ jobs:
             ths_timesharing
             em
           if-no-files-found: warn
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: data-${{ steps.set-date.outputs.run_date }}
+          release_name: Daily data ${{ steps.set-date.outputs.run_date }}
+          body: |
+            自动抓取的每日数据，包含 qq/、qq_timesharing/、ths/、ths_timesharing/、em/ 目录下的 CSV，压缩为 daily-data-${{ steps.set-date.outputs.run_date }}.zip。
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.ZIP_PATH }}
+          asset_name: daily-data-${{ steps.set-date.outputs.run_date }}.zip
+          asset_content_type: application/zip
 
