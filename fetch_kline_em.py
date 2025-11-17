@@ -383,7 +383,7 @@ class EMKlineFetcher:
 
 
 def main():
-    TEST_LIMIT = 10
+    TEST_LIMIT = None
     
     parser = argparse.ArgumentParser(description='东方财富K线数据抓取工具')
     parser.add_argument('--date', type=str, help='单个日期，格式: YYYY-MM-DD')
