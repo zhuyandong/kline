@@ -1,0 +1,243 @@
+# 股票数据接口文档
+
+## 一、同花顺
+
+### 1. 全部股票代码
+接口地址: https://ozone.10jqka.com.cn/tg_templates/doubleone/datacenter/data/all_codes.txt
+请求方式: GET
+说明: 获取全部股票代码列表
+
+### 2. K线接口
+
+#### 2.1 K线接口（V1）
+接口地址: https://quota-h.10jqka.com.cn/fuyao/common_hq_aggr_cache/quote/v1/single_kline
+请求方式: POST
+说明: 用于获取上证指数等K线数据
+请求头:
+  Host: quota-h.10jqka.com.cn
+  Content-Type: application/json
+  x-fuyao-auth: basecomponent
+请求体示例:
+{
+  "code_list": [
+    {
+      "market": "16",
+      "codes": ["1A0001"]
+    }
+  ],
+  "trade_class": "intraday",
+  "time_period": "day_1",
+  "trade_date": -1,
+  "begin_time": -92,
+  "end_time": 0,
+  "adjust_type": "forward",
+  "gpid": 0
+}
+
+#### 2.2 K线接口（V2）
+接口地址: https://quota-h.10jqka.com.cn/fuyao/common_hq/quote/v2/single_kline
+请求方式: POST
+说明: V2版本K线接口
+请求头:
+  Host: quota-h.10jqka.com.cn
+  Content-Type: application/json
+  x-fuyao-auth: basecomponent
+请求体示例:
+{
+  "code_list": [
+    {
+      "market": "16",
+      "codes": ["1A0001"]
+    }
+  ],
+  "trade_class": "intraday",
+  "time_period": "day_1",
+  "trade_date": -1,
+  "begin_time": -101,
+  "end_time": "0",
+  "adjust_type": "forward"
+}
+
+#### 2.3 最新K线数据接口
+接口地址: https://dq.10jqka.com.cn/interval_calculation/stock_info/v1/get_latest_k_line
+请求方式: GET
+参数:
+  stock_code: 股票代码（如：1A0001）
+  stock_market: 市场代码（如：16）
+示例: https://dq.10jqka.com.cn/interval_calculation/stock_info/v1/get_latest_k_line?stock_code=1A0001&stock_market=16
+
+### 3. 分时数据接口
+
+#### 3.1 分时数据接口
+接口地址: https://dq.10jqka.com.cn/interval_calculation/block_info/v1/get_time_sharing
+请求方式: GET
+参数: code, market, type
+
+#### 3.2 今日交易数据接口
+接口地址: https://d.10jqka.com.cn/v6/line/hs_300539/01/today.js
+请求方式: GET
+说明: 获取今日分时数据
+
+
+## 二、东方财富
+
+### 1. K线接口
+
+#### 1.1 日K线接口（资金流向）
+接口地址: https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get
+请求方式: GET
+参数:
+  secid: 股票代码（格式：市场.代码，如 1.000001）
+  klt: K线类型（101=日K）
+  lmt: 限制数量
+  fields1: 字段1（可选）
+  fields2: 字段2（可选）
+  ut: 用户token（可选）
+  cb: 回调函数名（可选）
+示例: https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get?secid=1.000001&klt=101&lmt=0
+
+#### 1.2 日K线接口（普通）
+接口地址: https://push2his.eastmoney.com/api/qt/stock/kline/get
+请求方式: GET
+参数:
+  secid: 股票代码（格式：市场.代码，如 1.603777）
+  klt: K线类型（101=日K）
+  fqt: 复权类型（1=前复权，0=不复权）
+  end: 结束日期（格式：YYYYMMDD）
+  lmt: 限制数量
+  ut: 用户token（可选）
+  fields1: 字段1（可选）
+  fields2: 字段2（可选）
+  cb: 回调函数名（可选）
+示例: https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.603777&klt=101&fqt=1&end=20250712&lmt=210
+
+
+## 三、腾讯
+
+### 1. K线接口
+
+#### 1.1 复权K线接口
+接口地址: http://web.ifzq.gtimg.cn/appstock/app/fqkline/get
+请求方式: GET
+参数格式: param=代码,周期,开始日期,结束日期,数量,复权类型
+参数说明:
+  代码: 股票代码（如：sh000001, sz000001）
+  周期: day(日K), week(周K), month(月K)
+  开始日期: 格式YYYY-MM-DD，可为空
+  结束日期: 格式YYYY-MM-DD，可为空
+  数量: 获取数据条数（640约等于一年，128约等于一年周K，12约等于一年月K）
+  复权类型: qfq(前复权), hfq(后复权)
+示例:
+  日K: http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,2017-12-01,,640,qfq
+  周K: http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh600020,week,2013-01-01,2014-12-31,320,qfq
+  月K: http://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh600020,month,2013-01-01,2014-12-31,12,qfq
+
+#### 1.2 分钟K线接口
+接口地址: https://ifzq.gtimg.cn/appstock/app/kline/mkline
+请求方式: GET
+参数格式: param=代码,周期,,数量
+参数说明:
+  代码: 股票代码（如：sh000001）
+  周期: m1(1分钟), m5(5分钟), m30(30分钟), m60(60分钟)
+  数量: 获取数据条数
+示例:
+  1分钟: https://ifzq.gtimg.cn/appstock/app/kline/mkline?param=sh000001,m1,,10
+  5分钟: http://ifzq.gtimg.cn/appstock/app/kline/mkline?param=sh600020,m5,,800
+  30分钟: http://ifzq.gtimg.cn/appstock/app/kline/mkline?param=sh600020,m30,,800
+  60分钟: http://ifzq.gtimg.cn/appstock/app/kline/mkline?param=sh600020,m60,,800
+
+#### 1.3 新复权K线接口
+接口地址: https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get
+请求方式: GET
+参数格式: param=代码,周期,,,数量,复权类型
+参数说明:
+  代码: 股票代码（如：sz000001）
+  周期: day(日K), week(周K), month(月K)
+  数量: 获取数据条数
+  复权类型: qfq(前复权), hfq(后复权)
+示例:
+  日K: https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?param=sz000001,day,,,320,qfq
+  周K: https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?param=sz000001,week,,,3200,qfq
+  月K: https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?param=sz000001,month,,,320,qfq
+
+#### 1.4 5日线接口
+接口地址: https://web.ifzq.gtimg.cn/appstock/app/day/query
+请求方式: GET
+参数:
+  _var: 变量名（可选）
+  code: 股票代码（如：sz000001）
+  r: 随机数（可选）
+说明: 只有收盘价和成交量
+示例: https://web.ifzq.gtimg.cn/appstock/app/day/query?_var=fdays_data_sz000001&code=sz000001
+
+### 2. 分时数据接口
+
+#### 2.1 分时图接口
+接口地址: https://web.ifzq.gtimg.cn/appstock/app/minute/query
+请求方式: GET
+参数:
+  _var: 变量名（可选）
+  code: 股票代码（如：sz000001）
+  r: 随机数（可选）
+说明: 获取当日分时数据
+示例: https://web.ifzq.gtimg.cn/appstock/app/minute/query?_var=min_data_sz000001&code=sz000001
+
+### 3. 查询全部股票行情接口
+
+#### 3.1 实时行情接口
+接口地址: http://qt.gtimg.cn/q=股票代码
+请求方式: GET
+参数说明:
+  股票代码: 格式为市场代码+股票代码（如：sz000858, sh600103）
+  支持批量查询: 多个代码用逗号分隔（如：sz000858,sh600103）
+返回数据格式: 以~分割字符串
+  0: 未知
+  1: 名字
+  2: 代码
+  3: 当前价格
+  4: 昨收
+  5: 今开
+  6: 成交量（手）
+  7: 外盘
+  8: 内盘
+  9-18: 买一到买五（价格和量）
+  19-28: 卖一到卖五（价格和量）
+  29: 最近逐笔成交
+  30: 时间
+  31: 涨跌
+  32: 涨跌%
+  33: 最高
+  34: 最低
+  35: 价格/成交量（手）/成交额
+  36: 成交量（手）
+  37: 成交额（万）
+  38: 换手率
+  39: 市盈率
+  41: 最高
+  42: 最低
+  43: 振幅
+  44: 流通市值
+  45: 总市值
+  46: 市净率
+  47: 涨停价
+  48: 跌停价
+示例:
+  单个: http://qt.gtimg.cn/q=sz000858
+  批量: http://qt.gtimg.cn/q=sz000858,sh600103
+
+#### 3.2 简要信息接口
+接口地址: http://qt.gtimg.cn/q=s_股票代码
+请求方式: GET
+说明: 获取股票简要信息
+返回数据格式: 以~分割字符串
+  0: 未知
+  1: 名字
+  2: 代码
+  3: 当前价格
+  4: 涨跌
+  5: 涨跌%
+  6: 成交量（手）
+  7: 成交额（万）
+  9: 总市值
+示例: http://qt.gtimg.cn/q=s_sz000858
+

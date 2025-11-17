@@ -1,0 +1,43 @@
+name: Fetch THS Kline
+
+on:
+  schedule:
+    # 每天北京时间18:00（UTC 10:00）触发
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run-fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run fetch_kline_ths.py
+        env:
+          TZ: Asia/Shanghai
+        run: |
+          RUN_DATE=$(date +%F)
+          echo "RUN_DATE=$RUN_DATE" >> "$GITHUB_ENV"
+          python fetch_kline_ths.py --date "$RUN_DATE"
+
+      - name: Upload generated CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: ths-kline-${{ env.RUN_DATE }}
+          path: ths
+          if-no-files-found: warn
+
