@@ -169,31 +169,31 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ths-kline-${{ needs.prepare.outputs.run_date }}
-          path: .
+          path: data/ths
       - name: Download bd kline data
         if: needs.fetch-kline-bd.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: bd-kline-${{ needs.prepare.outputs.run_date }}
-          path: .
+          path: data/bd
       - name: Download qq kline data
         if: needs.fetch-kline-qq.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: qq-kline-${{ needs.prepare.outputs.run_date }}
-          path: .
+          path: data/qq
       - name: Download qq timesharing data
         if: needs.fetch-timesharing-qq.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: qq-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: .
+          path: data/qq_timesharing
       - name: Download ths timesharing data
         if: needs.fetch-timesharing-ths.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: ths-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: .
+          path: data/ths_timesharing
 
       - name: Package data as zip
         run: |

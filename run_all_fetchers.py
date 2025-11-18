@@ -11,7 +11,6 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 DEFAULT_SCRIPTS = [
-    ("fetch_kline_em.py", "EM K线"),
     ("fetch_kline_ths.py", "THS K线"),
     ("fetch_kline_qq.py", "QQ K线"),
     ("fetch_kline_bd.py", "BD K线"),
@@ -60,11 +59,6 @@ def main():
     parser.add_argument("--markets", type=str, help="市场代码列表")
     parser.add_argument("--workers", type=int, help="覆盖脚本内部并发设置")
     parser.add_argument(
-        "--max-consecutive-failures",
-        type=int,
-        help="仅对东方财富脚本有效，设置连续失败阈值"
-    )
-    parser.add_argument(
         "--scripts",
         default=json.dumps([name for name, _ in DEFAULT_SCRIPTS]),
         help="自定义脚本列表(JSON 数组)"
@@ -97,17 +91,9 @@ def main():
     if args.workers:
         base_args += ["--workers", str(max(1, args.workers))]
 
-    if args.max_consecutive_failures:
-        base_args_em = base_args + ["--max-consecutive-failures", str(max(1, args.max_consecutive_failures))]
-    else:
-        base_args_em = base_args.copy()
-
     script_args_map = {}
     for script in scripts:
-        if script == "fetch_kline_em.py":
-            script_args_map[script] = base_args_em
-        else:
-            script_args_map[script] = base_args
+        script_args_map[script] = base_args
 
     results = []
     start_all = time.time()
