@@ -23,7 +23,7 @@ jobs:
           RUN_DATE=$(date +%F)
           echo "run_date=$RUN_DATE" >> "$GITHUB_OUTPUT"
 
-  fetch-kline:
+  fetch-kline-ths:
     runs-on: ubuntu-latest
     needs: prepare
     timeout-minutes: 360
@@ -32,41 +32,24 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests
-
       - name: Run fetch_kline_ths.py
         run: python fetch_kline_ths.py --date "${{ needs.prepare.outputs.run_date }}"
-
-      - name: Run fetch_kline_em.py
-        run: python fetch_kline_em.py --date "${{ needs.prepare.outputs.run_date }}"
-
-      - name: Run fetch_kline_bd.py
-        run: python fetch_kline_bd.py --date "${{ needs.prepare.outputs.run_date }}"
-
-      - name: Run fetch_kline_qq.py
-        run: python fetch_kline_qq.py --date "${{ needs.prepare.outputs.run_date }}"
-
-      - name: Upload kline data
+      - name: Upload ths data
         uses: actions/upload-artifact@v4
         with:
-          name: kline-data-${{ needs.prepare.outputs.run_date }}
-          path: |
-            qq
-            ths
-            em
-            bd
+          name: ths-kline-${{ needs.prepare.outputs.run_date }}
+          path: ths
           if-no-files-found: warn
 
-  fetch-timesharing:
+  fetch-kline-em:
     runs-on: ubuntu-latest
     needs: prepare
     timeout-minutes: 360
@@ -75,48 +58,169 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests
-
-      - name: Run fetch_timesharing_qq.py
-        run: python fetch_timesharing_qq.py --date "${{ needs.prepare.outputs.run_date }}"
-
-      - name: Run fetch_timesharing_ths.py
-        run: python fetch_timesharing_ths.py --date "${{ needs.prepare.outputs.run_date }}"
-
-      - name: Upload timesharing data
+      - name: Run fetch_kline_em.py
+        run: python fetch_kline_em.py --date "${{ needs.prepare.outputs.run_date }}"
+      - name: Upload em data
         uses: actions/upload-artifact@v4
         with:
-          name: timesharing-data-${{ needs.prepare.outputs.run_date }}
-          path: |
-            qq_timesharing
-            ths_timesharing
+          name: em-kline-${{ needs.prepare.outputs.run_date }}
+          path: em
+          if-no-files-found: warn
+
+  fetch-kline-bd:
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 360
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Run fetch_kline_bd.py
+        run: python fetch_kline_bd.py --date "${{ needs.prepare.outputs.run_date }}"
+      - name: Upload bd data
+        uses: actions/upload-artifact@v4
+        with:
+          name: bd-kline-${{ needs.prepare.outputs.run_date }}
+          path: bd
+          if-no-files-found: warn
+
+  fetch-kline-qq:
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 360
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Run fetch_kline_qq.py
+        run: python fetch_kline_qq.py --date "${{ needs.prepare.outputs.run_date }}"
+      - name: Upload qq kline data
+        uses: actions/upload-artifact@v4
+        with:
+          name: qq-kline-${{ needs.prepare.outputs.run_date }}
+          path: qq
+          if-no-files-found: warn
+
+  fetch-timesharing-qq:
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 360
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Run fetch_timesharing_qq.py
+        run: python fetch_timesharing_qq.py --date "${{ needs.prepare.outputs.run_date }}"
+      - name: Upload qq timesharing data
+        uses: actions/upload-artifact@v4
+        with:
+          name: qq-timesharing-${{ needs.prepare.outputs.run_date }}
+          path: qq_timesharing
+          if-no-files-found: warn
+
+  fetch-timesharing-ths:
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 360
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      - name: Run fetch_timesharing_ths.py
+        run: python fetch_timesharing_ths.py --date "${{ needs.prepare.outputs.run_date }}"
+      - name: Upload ths timesharing data
+        uses: actions/upload-artifact@v4
+        with:
+          name: ths-timesharing-${{ needs.prepare.outputs.run_date }}
+          path: ths_timesharing
           if-no-files-found: warn
 
   package-and-release:
     runs-on: ubuntu-latest
-    needs: [prepare, fetch-kline, fetch-timesharing]
+    needs: [prepare, fetch-kline-ths, fetch-kline-em, fetch-kline-bd, fetch-kline-qq, fetch-timesharing-qq, fetch-timesharing-ths]
     timeout-minutes: 30
+    if: always()
     steps:
-      - name: Download kline data
+      - name: Download ths kline data
         uses: actions/download-artifact@v4
         with:
-          name: kline-data-${{ needs.prepare.outputs.run_date }}
+          name: ths-kline-${{ needs.prepare.outputs.run_date }}
           path: .
-
-      - name: Download timesharing data
+          if-no-files-found: ignore
+      - name: Download em kline data
         uses: actions/download-artifact@v4
         with:
-          name: timesharing-data-${{ needs.prepare.outputs.run_date }}
+          name: em-kline-${{ needs.prepare.outputs.run_date }}
           path: .
+          if-no-files-found: ignore
+      - name: Download bd kline data
+        uses: actions/download-artifact@v4
+        with:
+          name: bd-kline-${{ needs.prepare.outputs.run_date }}
+          path: .
+          if-no-files-found: ignore
+      - name: Download qq kline data
+        uses: actions/download-artifact@v4
+        with:
+          name: qq-kline-${{ needs.prepare.outputs.run_date }}
+          path: .
+          if-no-files-found: ignore
+      - name: Download qq timesharing data
+        uses: actions/download-artifact@v4
+        with:
+          name: qq-timesharing-${{ needs.prepare.outputs.run_date }}
+          path: .
+          if-no-files-found: ignore
+      - name: Download ths timesharing data
+        uses: actions/download-artifact@v4
+        with:
+          name: ths-timesharing-${{ needs.prepare.outputs.run_date }}
+          path: .
+          if-no-files-found: ignore
 
       - name: Package data as zip
         run: |
