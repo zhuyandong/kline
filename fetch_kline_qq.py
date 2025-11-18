@@ -10,24 +10,27 @@ import json
 import csv
 import os
 import re
+import random
 from datetime import datetime, timedelta
 import argparse
 import time
 from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class QQKlineFetcher:
     """腾讯K线数据抓取类"""
     
-    def __init__(self):
+    def __init__(self, max_workers: int = 10):
         self.base_url = "http://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": "http://quote.eastmoney.com/",
             "Accept": "*/*"
         }
-        self.output_dir = "qq"
+        self.output_dir = os.path.join("data", "qq")
         self.ths_fetcher = None
+        self.max_workers = max_workers
         
     def _get_ths_fetcher(self):
         """延迟导入同花顺fetcher以复用股票代码获取方法"""
@@ -249,6 +252,18 @@ class QQKlineFetcher:
         
         print(f"已保存: {filepath} ({len(data)} 条记录)")
     
+    def _fetch_single_stock(self, stock: Dict, trade_date: str) -> Optional[List[Dict]]:
+        """线程池任务：抓取单支股票对应日期的数据"""
+        code = stock['code']
+        market = stock['market']
+        kline_data = self.fetch_kline_data(code, market, trade_date)
+        if kline_data:
+            for record in kline_data:
+                record['code'] = code
+                record['market'] = market
+        time.sleep(random.uniform(0.05, 0.15))
+        return kline_data
+    
     def fetch_by_date_range(self, stock_codes: List[Dict], start_date: str, end_date: str):
         """按日期段抓取数据"""
         trade_days = self.get_trade_days(start_date, end_date)
@@ -261,25 +276,32 @@ class QQKlineFetcher:
             print(f"\n处理日期: {trade_date}")
             
             all_data = []
-            for stock in stock_codes:
-                code = stock['code']
-                market = stock['market']
-                name = stock.get('name', '')
+            success = 0
+            failures = 0
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_stock = {
+                    executor.submit(self._fetch_single_stock, stock, trade_date): stock
+                    for stock in stock_codes
+                }
                 
-                print(f"  抓取 {name}({code})...", end=' ')
-                kline_data = self.fetch_kline_data(code, market, trade_date)
-                
-                if kline_data:
-                    for record in kline_data:
-                        record['code'] = code
-                        record['market'] = market
-                    all_data.extend(kline_data)
-                    print(f"成功 ({len(kline_data)} 条)")
-                else:
-                    print("失败")
-                
-                time.sleep(0.5)
+                for future in as_completed(future_to_stock):
+                    stock = future_to_stock[future]
+                    code = stock['code']
+                    name = stock.get('name', '')
+                    try:
+                        records = future.result()
+                        if records:
+                            all_data.extend(records)
+                            success += 1
+                            print(f"  {name}({code}) 成功 ({len(records)} 条)")
+                        else:
+                            failures += 1
+                            print(f"  {name}({code}) 无数据")
+                    except Exception as exc:
+                        failures += 1
+                        print(f"  {name}({code}) 失败: {exc}")
             
+            print(f"  并发结果: 成功 {success} 只，失败 {failures} 只")
             if all_data:
                 filename = f"kline_{trade_date}.csv"
                 self.save_to_csv(all_data, filename)
@@ -291,27 +313,44 @@ class QQKlineFetcher:
         self.fetch_by_date_range(stock_codes, date, date)
 
 
+def _resolve_date_args(args):
+    """统一处理日期参数，支持默认取当天"""
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    
+    if args.date:
+        if args.start or args.end:
+            raise ValueError("--date 和 --start/--end 不能同时使用")
+        return "single", args.date, None, None
+    
+    if args.start or args.end:
+        if not (args.start and args.end):
+            raise ValueError("--start 和 --end 需要同时指定，或直接使用 --date")
+        return "range", None, args.start, args.end
+    
+    print(f"未指定日期，默认使用今天: {today_str}")
+    return "single", today_str, None, None
+
+
 def main():
     TEST_LIMIT = None
     
     parser = argparse.ArgumentParser(description='腾讯K线数据抓取工具')
-    parser.add_argument('--date', type=str, help='单个日期，格式: YYYY-MM-DD')
+    parser.add_argument('--date', type=str, help='单个日期，格式: YYYY-MM-DD（缺省为今天）')
     parser.add_argument('--start', type=str, help='开始日期，格式: YYYY-MM-DD')
     parser.add_argument('--end', type=str, help='结束日期，格式: YYYY-MM-DD')
     parser.add_argument('--codes', type=str, help='股票代码列表，逗号分隔，格式: 代码1,代码2 (需要配合--markets使用)')
     parser.add_argument('--markets', type=str, help='市场代码列表，逗号分隔，格式: 市场1,市场2 (需要配合--codes使用)')
+    parser.add_argument('--workers', type=int, default=10, help='并发线程数量，默认10')
     
     args = parser.parse_args()
     
-    if args.date:
-        if args.start or args.end:
-            print("错误: --date 和 --start/--end 不能同时使用")
-            return
-    elif not (args.start and args.end):
-        print("错误: 请指定 --date 或 --start/--end")
+    try:
+        mode, resolved_date, start_date, end_date = _resolve_date_args(args)
+    except ValueError as exc:
+        print(f"错误: {exc}")
         return
     
-    fetcher = QQKlineFetcher()
+    fetcher = QQKlineFetcher(max_workers=max(1, args.workers or 10))
     
     if args.codes and args.markets:
         codes = [c.strip() for c in args.codes.split(',')]
@@ -336,10 +375,10 @@ def main():
         stock_codes = stock_codes[:TEST_LIMIT]
         print(f"⚠️  测试模式：限制抓取数量为 {TEST_LIMIT} 只（原始数量: {original_count} 只）")
     
-    if args.date:
-        fetcher.fetch_by_single_date(stock_codes, args.date)
+    if mode == "single":
+        fetcher.fetch_by_single_date(stock_codes, resolved_date)
     else:
-        fetcher.fetch_by_date_range(stock_codes, args.start, args.end)
+        fetcher.fetch_by_date_range(stock_codes, start_date, end_date)
     
     print("\n抓取完成！")
 

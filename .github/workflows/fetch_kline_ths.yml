@@ -26,6 +26,7 @@ jobs:
   fetch-kline-ths:
     runs-on: ubuntu-latest
     needs: prepare
+    continue-on-error: true
     timeout-minutes: 360
     env:
       TZ: Asia/Shanghai
@@ -46,12 +47,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ths-kline-${{ needs.prepare.outputs.run_date }}
-          path: ths
+          path: data/ths
           if-no-files-found: warn
 
   fetch-kline-em:
     runs-on: ubuntu-latest
     needs: prepare
+    continue-on-error: true
     timeout-minutes: 360
     env:
       TZ: Asia/Shanghai
@@ -72,12 +74,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: em-kline-${{ needs.prepare.outputs.run_date }}
-          path: em
+          path: data/em
           if-no-files-found: warn
 
   fetch-kline-bd:
     runs-on: ubuntu-latest
     needs: prepare
+    continue-on-error: true
     timeout-minutes: 360
     env:
       TZ: Asia/Shanghai
@@ -98,12 +101,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bd-kline-${{ needs.prepare.outputs.run_date }}
-          path: bd
+          path: data/bd
           if-no-files-found: warn
 
   fetch-kline-qq:
     runs-on: ubuntu-latest
     needs: prepare
+    continue-on-error: true
     timeout-minutes: 360
     env:
       TZ: Asia/Shanghai
@@ -124,12 +128,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qq-kline-${{ needs.prepare.outputs.run_date }}
-          path: qq
+          path: data/qq
           if-no-files-found: warn
 
   fetch-timesharing-qq:
     runs-on: ubuntu-latest
     needs: prepare
+    continue-on-error: true
     timeout-minutes: 360
     env:
       TZ: Asia/Shanghai
@@ -150,12 +155,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qq-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: qq_timesharing
+          path: data/qq_timesharing
           if-no-files-found: warn
 
   fetch-timesharing-ths:
     runs-on: ubuntu-latest
     needs: prepare
+    continue-on-error: true
     timeout-minutes: 360
     env:
       TZ: Asia/Shanghai
@@ -176,7 +182,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ths-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: ths_timesharing
+          path: data/ths_timesharing
           if-no-files-found: warn
 
   package-and-release:
@@ -186,48 +192,48 @@ jobs:
     if: always()
     steps:
       - name: Download ths kline data
+        if: needs.fetch-kline-ths.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: ths-kline-${{ needs.prepare.outputs.run_date }}
           path: .
-          if-no-files-found: ignore
       - name: Download em kline data
+        if: needs.fetch-kline-em.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: em-kline-${{ needs.prepare.outputs.run_date }}
           path: .
-          if-no-files-found: ignore
       - name: Download bd kline data
+        if: needs.fetch-kline-bd.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: bd-kline-${{ needs.prepare.outputs.run_date }}
           path: .
-          if-no-files-found: ignore
       - name: Download qq kline data
+        if: needs.fetch-kline-qq.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: qq-kline-${{ needs.prepare.outputs.run_date }}
           path: .
-          if-no-files-found: ignore
       - name: Download qq timesharing data
+        if: needs.fetch-timesharing-qq.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: qq-timesharing-${{ needs.prepare.outputs.run_date }}
           path: .
-          if-no-files-found: ignore
       - name: Download ths timesharing data
+        if: needs.fetch-timesharing-ths.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: ths-timesharing-${{ needs.prepare.outputs.run_date }}
           path: .
-          if-no-files-found: ignore
 
       - name: Package data as zip
         run: |
           mkdir -p dist
           ZIP_PATH="dist/daily-data-${{ needs.prepare.outputs.run_date }}.zip"
           DATA_DIRS=""
-          for dir in qq qq_timesharing ths ths_timesharing em bd; do
+          for dir in data/qq data/qq_timesharing data/ths data/ths_timesharing data/em data/bd; do
             if [ -d "$dir" ]; then
               DATA_DIRS="$DATA_DIRS $dir"
             fi
@@ -248,7 +254,7 @@ jobs:
           tag_name: data-${{ needs.prepare.outputs.run_date }}
           release_name: Daily data ${{ needs.prepare.outputs.run_date }}
           body: |
-            自动抓取的每日数据，包含 qq/、qq_timesharing/、ths/、ths_timesharing/、em/、bd/ 目录下的 CSV，压缩为 daily-data-${{ needs.prepare.outputs.run_date }}.zip。
+            自动抓取的每日数据，包含 data/qq/、data/qq_timesharing/、data/ths/、data/ths_timesharing/、data/em/、data/bd/ 目录下的 CSV，压缩为 daily-data-${{ needs.prepare.outputs.run_date }}.zip。
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1

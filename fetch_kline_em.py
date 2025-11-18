@@ -14,23 +14,25 @@ import random
 from datetime import datetime, timedelta
 import argparse
 import time
+import sys
 from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class EMKlineFetcher:
     """东方财富K线数据抓取类"""
     
-    def __init__(self, use_proxy=False, proxy_list=None):
+    def __init__(self, use_proxy=False, proxy_list=None, max_workers: int = 10):
         self.base_url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
-        self.output_dir = "em"
+        self.output_dir = os.path.join("data", "em")
         self.ths_fetcher = None
         self.use_proxy = use_proxy
         self.proxy_list = proxy_list or []
-        self.session = requests.Session()
-        self._update_headers()
+        self.max_workers = max_workers
+        self.saved_files: List[str] = []
         
-    def _update_headers(self):
-        """更新请求头，模拟真实浏览器（保持简洁，避免过度特征）"""
+    def _build_headers(self) -> Dict[str, str]:
+        """生成请求头，模拟真实浏览器（保持简洁，避免过度特征）"""
         user_agents = [
             ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36", '"macOS"'),
             ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36", '"Windows"'),
@@ -39,7 +41,7 @@ class EMKlineFetcher:
         
         user_agent, platform = random.choice(user_agents)
         
-        self.headers = {
+        headers = {
             "User-Agent": user_agent,
             "Referer": "https://quote.eastmoney.com/",
             "Accept": "*/*",
@@ -50,7 +52,7 @@ class EMKlineFetcher:
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-site"
         }
-        self.session.headers.update(self.headers)
+        return headers
         
     def _get_ths_fetcher(self):
         """延迟导入同花顺fetcher以复用股票代码获取方法"""
@@ -150,14 +152,17 @@ class EMKlineFetcher:
                 proxy = random.choice(self.proxy_list)
                 proxies = {'http': proxy, 'https': proxy}
             
+            headers = self._build_headers()
+
             for attempt in range(max_retries):
                 try:
                     if attempt > 0:
-                        self._update_headers()
+                        headers = self._build_headers()
                     
-                    response = self.session.get(
+                    response = requests.get(
                         self.base_url,
                         params=params,
+                        headers=headers,
                         proxies=proxies,
                         timeout=30
                     )
@@ -337,7 +342,21 @@ class EMKlineFetcher:
             writer.writeheader()
             writer.writerows(data)
         
+        self.saved_files.append(filepath)
         print(f"已保存: {filepath} ({len(data)} 条记录)")
+    
+    def _fetch_single_stock(self, stock: Dict, trade_date: str) -> Optional[List[Dict]]:
+        """供线程池调用的单支股票抓取任务"""
+        code = stock['code']
+        market = stock['market']
+        kline_data = self.fetch_kline_data(code, market, trade_date)
+        if kline_data:
+            for record in kline_data:
+                record['code'] = code
+                record['market'] = market
+        # 随机短暂休眠，减缓并发节奏，降低触发反爬概率
+        time.sleep(random.uniform(0.05, 0.15))
+        return kline_data
     
     def fetch_by_date_range(self, stock_codes: List[Dict], start_date: str, end_date: str):
         """按日期段抓取数据"""
@@ -351,26 +370,33 @@ class EMKlineFetcher:
             print(f"\n处理日期: {trade_date}")
             
             all_data = []
-            for stock in stock_codes:
-                code = stock['code']
-                market = stock['market']
-                name = stock.get('name', '')
+            success = 0
+            failures = 0
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_stock = {
+                    executor.submit(self._fetch_single_stock, stock, trade_date): stock
+                    for stock in stock_codes
+                }
                 
-                print(f"  抓取 {name}({code})...", end=' ')
-                kline_data = self.fetch_kline_data(code, market, trade_date)
-                
-                if kline_data:
-                    for record in kline_data:
-                        record['code'] = code
-                        record['market'] = market
-                    all_data.extend(kline_data)
-                    print(f"成功 ({len(kline_data)} 条)")
-                else:
-                    print("失败")
-                
-                delay = random.uniform(1.0, 2.5)
-                time.sleep(delay)
+                for future in as_completed(future_to_stock):
+                    stock = future_to_stock[future]
+                    code = stock['code']
+                    name = stock.get('name', '')
+                    
+                    try:
+                        records = future.result()
+                        if records:
+                            all_data.extend(records)
+                            success += 1
+                            print(f"  {name}({code}) 成功 ({len(records)} 条)")
+                        else:
+                            failures += 1
+                            print(f"  {name}({code}) 无数据")
+                    except Exception as exc:
+                        failures += 1
+                        print(f"  {name}({code}) 失败: {exc}")
             
+            print(f"  并发结果: 成功 {success} 只，失败 {failures} 只")
             if all_data:
                 filename = f"kline_{trade_date}.csv"
                 self.save_to_csv(all_data, filename)
@@ -386,23 +412,31 @@ def main():
     TEST_LIMIT = None
     
     parser = argparse.ArgumentParser(description='东方财富K线数据抓取工具')
-    parser.add_argument('--date', type=str, help='单个日期，格式: YYYY-MM-DD')
+    parser.add_argument('--date', type=str, help='单个日期，格式: YYYY-MM-DD（缺省为今天）')
     parser.add_argument('--start', type=str, help='开始日期，格式: YYYY-MM-DD')
     parser.add_argument('--end', type=str, help='结束日期，格式: YYYY-MM-DD')
     parser.add_argument('--codes', type=str, help='股票代码列表，逗号分隔，格式: 代码1,代码2 (需要配合--markets使用)')
     parser.add_argument('--markets', type=str, help='市场代码列表，逗号分隔，格式: 市场1,市场2 (需要配合--codes使用)')
+    parser.add_argument('--workers', type=int, default=10, help='并发线程数量，默认10')
     
     args = parser.parse_args()
     
+    today_str = datetime.now().strftime("%Y-%m-%d")
     if args.date:
         if args.start or args.end:
             print("错误: --date 和 --start/--end 不能同时使用")
             return
-    elif not (args.start and args.end):
-        print("错误: 请指定 --date 或 --start/--end")
-        return
+    else:
+        if args.start and args.end:
+            pass
+        elif args.start or args.end:
+            print("错误: --start 和 --end 需要同时指定，或直接使用 --date")
+            return
+        else:
+            args.date = today_str
+            print(f"未指定日期，默认使用今天: {args.date}")
     
-    fetcher = EMKlineFetcher()
+    fetcher = EMKlineFetcher(max_workers=max(1, args.workers or 10))
     
     if args.codes and args.markets:
         codes = [c.strip() for c in args.codes.split(',')]
@@ -431,6 +465,10 @@ def main():
         fetcher.fetch_by_single_date(stock_codes, args.date)
     else:
         fetcher.fetch_by_date_range(stock_codes, args.start, args.end)
+    
+    if not fetcher.saved_files:
+        print("错误: 未成功生成任何数据文件，可能被反爬或无数据。")
+        sys.exit(1)
     
     print("\n抓取完成！")
 

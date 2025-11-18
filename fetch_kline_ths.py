@@ -13,12 +13,14 @@ from datetime import datetime, timedelta
 import argparse
 import time
 from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 
 class THSKlineFetcher:
     """同花顺K线数据抓取类"""
     
-    def __init__(self):
+    def __init__(self, workers: int = 10):
         self.base_url = "https://quota-h.10jqka.com.cn/fuyao/common_hq_aggr_cache/quote/v1/single_kline"
         self.headers = {
             "Host": "quota-h.10jqka.com.cn",
@@ -26,10 +28,12 @@ class THSKlineFetcher:
             "x-fuyao-auth": "basecomponent",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        self.output_dir = "ths"
+        self.output_dir = os.path.join("data", "ths")
+        self.workers = workers
+        self.print_lock = threading.Lock()  # 线程安全的打印锁
         
     def get_all_stock_codes(self) -> List[Dict[str, str]]:
-        """获取全部A股股票代码列表（排除指数）"""
+        """获取全部股票代码列表（包括指数和特殊分类）"""
         try:
             url = "https://ozone.10jqka.com.cn/tg_templates/doubleone/datacenter/data/all_codes.txt"
             response = requests.get(url, timeout=10)
@@ -37,19 +41,18 @@ class THSKlineFetcher:
             data = json.loads(response.text)
             
             stock_list = []
-            a_stock_markets = ['17', '33']  # 17=上海A股，33=深圳A股
+            # 采集所有市场代码：16=上证指数, 17=上海A股, 22=上海特殊股票, 32=深证指数, 33=深圳A股
             
             for market_code, stocks in data.items():
-                if market_code in a_stock_markets:
-                    for stock in stocks:
-                        if len(stock) >= 2:
-                            stock_list.append({
-                                'code': stock[0],
-                                'market': market_code,
-                                'name': stock[1] if len(stock) > 1 else ''
-                            })
+                for stock in stocks:
+                    if len(stock) >= 2:
+                        stock_list.append({
+                            'code': stock[0],
+                            'market': market_code,
+                            'name': stock[1] if len(stock) > 1 else ''
+                        })
             
-            print(f"获取到 {len(stock_list)} 只A股股票")
+            print(f"获取到 {len(stock_list)} 只股票（包括指数和特殊分类）")
             return stock_list
         except Exception as e:
             print(f"获取股票代码列表失败: {e}")
@@ -65,26 +68,14 @@ class THSKlineFetcher:
         except ValueError:
             raise ValueError(f"日期格式错误，应为 YYYY-MM-DD: {date_str}")
     
-    def get_trade_days(self, start_date: str, end_date: str) -> List[str]:
-        """获取交易日列表（简化版：跳过周末）"""
-        start = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-        
-        dates = []
-        current = start
-        while current <= end:
-            if current.weekday() < 5:
-                dates.append(current.strftime("%Y-%m-%d"))
-            current += timedelta(days=1)
-        return dates
-    
-    def fetch_kline_data(self, stock_code: str, market: str, trade_date: str) -> Optional[List[Dict]]:
+    def fetch_kline_data(self, stock_code: str, market: str, trade_date: str, stock_name: str = "") -> Optional[List[Dict]]:
         """获取指定日期的K线数据"""
         try:
             target_date = datetime.strptime(trade_date, "%Y-%m-%d")
             current_date = datetime.now()
             if target_date > current_date:
-                print(f"错误: 日期 {trade_date} 是未来日期")
+                with self.print_lock:
+                    print(f"错误: 日期 {trade_date} 是未来日期")
                 return None
             
             target_timestamp = self.date_to_timestamp(trade_date)
@@ -92,13 +83,23 @@ class THSKlineFetcher:
             days_diff = (current_timestamp - target_timestamp) // 86400
             
             if days_diff < 0:
-                print(f"错误: 日期 {trade_date} 是未来日期")
+                with self.print_lock:
+                    print(f"错误: 日期 {trade_date} 是未来日期")
                 return None
             
-            if days_diff > 365:
-                print(f"警告: 日期 {trade_date} 距离今天超过1年，可能无法获取数据")
+            days_to_fetch = 640
             
-            days_to_fetch = 100
+            # API 的 end_time 必须 >= 0，所以：
+            # 如果 trade_date 是今天，end_time = 0，begin_time = -640
+            # 如果 trade_date 是过去的日期，end_time = 0，begin_time 需要确保能获取到 trade_date 的数据
+            # 如果 trade_date 距离今天超过 640 天，需要调整 begin_time
+            end_time = 0
+            if days_diff > days_to_fetch:
+                # trade_date 距离今天超过 640 天，需要获取更多数据
+                begin_time = -(days_diff + days_to_fetch)
+            else:
+                # trade_date 距离今天在 640 天内，使用默认的 640 天
+                begin_time = -days_to_fetch
             
             payload = {
                 "code_list": [
@@ -110,8 +111,8 @@ class THSKlineFetcher:
                 "trade_class": "intraday",
                 "time_period": "day_1",
                 "trade_date": -1,
-                "begin_time": -days_to_fetch,
-                "end_time": 0,
+                "begin_time": begin_time,
+                "end_time": end_time,
                 "adjust_type": "forward",
                 "gpid": 0
             }
@@ -127,26 +128,30 @@ class THSKlineFetcher:
             )
             
             if response.status_code != 200:
-                print(f"请求失败: HTTP {response.status_code}")
-                try:
-                    error_text = response.text[:500]
-                    print(f"错误详情: {error_text}")
-                except:
-                    pass
-                print(f"请求参数: {json.dumps(payload, ensure_ascii=False)}")
+                with self.print_lock:
+                    print(f"请求失败 ({stock_code}): HTTP {response.status_code}")
+                    try:
+                        error_text = response.text[:500]
+                        print(f"错误详情: {error_text}")
+                    except:
+                        pass
                 return None
             
             try:
                 data = response.json()
             except json.JSONDecodeError:
-                print(f"响应不是有效的JSON: {response.text[:200]}")
+                with self.print_lock:
+                    print(f"响应不是有效的JSON ({stock_code}): {response.text[:200]}")
                 return None
             
             if os.getenv('DEBUG'):
-                print(f"  响应数据: {json.dumps(data, ensure_ascii=False, indent=2)[:500]}")
+                with self.print_lock:
+                    print(f"  响应数据: {json.dumps(data, ensure_ascii=False, indent=2)[:500]}")
             
             if 'error' in data or 'message' in data:
-                print(f"接口返回错误: {data.get('error', data.get('message', '未知错误'))}")
+                error_msg = data.get('error', data.get('message', '未知错误'))
+                with self.print_lock:
+                    print(f"接口返回错误 ({stock_code}): {error_msg}")
                 return None
             
             if 'data' in data:
@@ -200,14 +205,17 @@ class THSKlineFetcher:
                 if kline_list:
                     return kline_list
             
-            print(f"无数据返回，响应内容: {json.dumps(data, ensure_ascii=False)[:300]}")
+            with self.print_lock:
+                print(f"无数据返回 ({stock_code}): {json.dumps(data, ensure_ascii=False)[:300]}")
             return None
             
         except Exception as e:
-            print(f"获取K线数据失败 ({stock_code}, {trade_date}): {e}")
+            with self.print_lock:
+                print(f"获取K线数据失败 ({stock_code}, {trade_date}): {e}")
             import traceback
             if os.getenv('DEBUG'):
-                traceback.print_exc()
+                with self.print_lock:
+                    traceback.print_exc()
             return None
     
     def save_to_csv(self, data: List[Dict], filename: str):
@@ -244,69 +252,88 @@ class THSKlineFetcher:
         
         print(f"已保存: {filepath} ({len(data)} 条记录)")
     
-    def fetch_by_date_range(self, stock_codes: List[Dict], start_date: str, end_date: str):
-        """按日期段抓取数据"""
-        trade_days = self.get_trade_days(start_date, end_date)
+    def _fetch_single_stock(self, stock: Dict, trade_date: str) -> tuple:
+        """单个股票抓取任务（用于并发）"""
+        code = stock['code']
+        market = stock['market']
+        name = stock.get('name', '')
         
-        print(f"开始抓取数据: {start_date} 至 {end_date}")
-        print(f"交易日数量: {len(trade_days)}")
-        print(f"股票数量: {len(stock_codes)}")
+        kline_data = self.fetch_kline_data(code, market, trade_date, name)
         
-        for trade_date in trade_days:
-            print(f"\n处理日期: {trade_date}")
-            
-            all_data = []
-            for stock in stock_codes:
-                code = stock['code']
-                market = stock['market']
-                name = stock.get('name', '')
-                
-                print(f"  抓取 {name}({code})...", end=' ')
-                kline_data = self.fetch_kline_data(code, market, trade_date)
-                
-                if kline_data:
-                    for record in kline_data:
-                        record['code'] = code
-                        record['market'] = market
-                    all_data.extend(kline_data)
-                    print(f"成功 ({len(kline_data)} 条)")
-                else:
-                    print("失败")
-                
-                time.sleep(0.5)
-            
-            if all_data:
-                filename = f"kline_{trade_date}.csv"
-                self.save_to_csv(all_data, filename)
-            else:
-                print(f"  日期 {trade_date} 无数据")
+        if kline_data:
+            for record in kline_data:
+                record['code'] = code
+                record['market'] = market
+            with self.print_lock:
+                print(f"  ✓ {name}({code}): 成功 ({len(kline_data)} 条)")
+            return (code, kline_data, True)
+        else:
+            with self.print_lock:
+                print(f"  ✗ {name}({code}): 失败")
+            return (code, [], False)
     
     def fetch_by_single_date(self, stock_codes: List[Dict], date: str):
         """按单个日期抓取数据"""
-        self.fetch_by_date_range(stock_codes, date, date)
+        print(f"开始抓取数据: {date}")
+        print(f"股票数量: {len(stock_codes)}")
+        print(f"并发数: {self.workers}")
+        
+        start_time = time.time()
+        
+        all_data = []
+        success_count = 0
+        fail_count = 0
+        
+        # 使用线程池并发抓取
+        with ThreadPoolExecutor(max_workers=self.workers) as executor:
+            # 提交所有任务
+            future_to_stock = {
+                executor.submit(self._fetch_single_stock, stock, date): stock
+                for stock in stock_codes
+            }
+            
+            # 收集结果
+            for future in as_completed(future_to_stock):
+                try:
+                    code, kline_data, success = future.result()
+                    if success:
+                        all_data.extend(kline_data)
+                        success_count += 1
+                    else:
+                        fail_count += 1
+                except Exception as e:
+                    stock = future_to_stock[future]
+                    with self.print_lock:
+                        print(f"  ✗ {stock.get('name', '')}({stock['code']}): 异常 - {e}")
+                    fail_count += 1
+        
+        elapsed_time = time.time() - start_time
+        print(f"\n完成: 成功 {success_count}, 失败 {fail_count}, 耗时 {elapsed_time:.2f}秒")
+        
+        if all_data:
+            filename = f"kline_{date}.csv"
+            self.save_to_csv(all_data, filename)
+        else:
+            print(f"  日期 {date} 无数据")
 
 
 def main():
     TEST_LIMIT = None  # 测试时限制抓取数量，正式运行时改为None或0
     
     parser = argparse.ArgumentParser(description='同花顺K线数据抓取工具')
-    parser.add_argument('--date', type=str, help='单个日期，格式: YYYY-MM-DD')
-    parser.add_argument('--start', type=str, help='开始日期，格式: YYYY-MM-DD')
-    parser.add_argument('--end', type=str, help='结束日期，格式: YYYY-MM-DD')
+    parser.add_argument('--date', type=str, help='日期，格式: YYYY-MM-DD（不传则使用今天）')
     parser.add_argument('--codes', type=str, help='股票代码列表，逗号分隔，格式: 代码1,代码2 (需要配合--markets使用)')
-    parser.add_argument('--markets', type=str, help='市场代码列表，逗号分隔，格式: 市场1,市场2 (需要配合--codes使用)')
+    parser.add_argument('--markets', type=str, help='市场代码列表，逗号分隔，格式: 市场1,市场2 (需要配合--codes使用)。可用市场代码: 16=上证指数, 17=上海A股, 22=上海特殊股票, 32=深证指数, 33=深圳A股。示例: --codes 000001,600000 --markets 33,17')
+    parser.add_argument('--workers', type=int, default=10, help='并发线程数，默认10（测试反爬时可调高，如50或100）')
     
     args = parser.parse_args()
     
-    if args.date:
-        if args.start or args.end:
-            print("错误: --date 和 --start/--end 不能同时使用")
-            return
-    elif not (args.start and args.end):
-        print("错误: 请指定 --date 或 --start/--end")
-        return
+    # 如果 --date 不传，默认使用今天的日期
+    if not args.date:
+        args.date = datetime.now().strftime("%Y-%m-%d")
+        print(f"未指定日期，默认使用今天: {args.date}")
     
-    fetcher = THSKlineFetcher()
+    fetcher = THSKlineFetcher(workers=args.workers)
     
     if args.codes and args.markets:
         codes = [c.strip() for c in args.codes.split(',')]
@@ -320,7 +347,7 @@ def main():
         ]
         print(f"使用指定的 {len(stock_codes)} 只股票")
     else:
-        print("获取全部A股股票代码...")
+        print("获取全部股票代码（包括指数和特殊分类）...")
         stock_codes = fetcher.get_all_stock_codes()
         if not stock_codes:
             print("获取股票代码失败")
@@ -331,10 +358,7 @@ def main():
         stock_codes = stock_codes[:TEST_LIMIT]
         print(f"⚠️  测试模式：限制抓取数量为 {TEST_LIMIT} 只（原始数量: {original_count} 只）")
     
-    if args.date:
-        fetcher.fetch_by_single_date(stock_codes, args.date)
-    else:
-        fetcher.fetch_by_date_range(stock_codes, args.start, args.end)
+    fetcher.fetch_by_single_date(stock_codes, args.date)
     
     print("\n抓取完成！")
 

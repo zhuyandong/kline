@@ -25,7 +25,7 @@ class QQTimesharingFetcher:
             "Referer": "http://quote.eastmoney.com/",
             "Accept": "*/*"
         }
-        self.output_dir = "qq_timesharing"
+        self.output_dir = os.path.join("data", "qq_timesharing")
         self.ths_fetcher = None
         
     def _get_ths_fetcher(self):
@@ -345,6 +345,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 

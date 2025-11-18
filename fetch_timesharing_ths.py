@@ -25,7 +25,7 @@ class THSTimesharingFetcher:
             "Referer": "https://www.10jqka.com.cn/",
             "Accept": "*/*"
         }
-        self.output_dir = "ths_timesharing"
+        self.output_dir = os.path.join("data", "ths_timesharing")
         
     def get_all_stock_codes(self) -> List[Dict[str, str]]:
         """获取全部A股股票代码列表（排除指数）"""
