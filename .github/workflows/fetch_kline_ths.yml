@@ -10,8 +10,23 @@ permissions:
   contents: write
 
 jobs:
-  run-fetch:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      run_date: ${{ steps.set-date.outputs.run_date }}
+    steps:
+      - name: Prepare run date
+        id: set-date
+        env:
+          TZ: Asia/Shanghai
+        run: |
+          RUN_DATE=$(date +%F)
+          echo "run_date=$RUN_DATE" >> "$GITHUB_OUTPUT"
+
+  fetch-kline:
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 360
     env:
       TZ: Asia/Shanghai
     steps:
@@ -28,37 +43,87 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Prepare run date
-        id: set-date
-        run: |
-          RUN_DATE=$(date +%F)
-          echo "RUN_DATE=$RUN_DATE" >> "$GITHUB_ENV"
-          echo "run_date=$RUN_DATE" >> "$GITHUB_OUTPUT"
-
       - name: Run fetch_kline_ths.py
-        run: python fetch_kline_ths.py --date "$RUN_DATE"
+        run: python fetch_kline_ths.py --date "${{ needs.prepare.outputs.run_date }}"
 
       - name: Run fetch_kline_em.py
-        run: python fetch_kline_em.py --date "$RUN_DATE"
+        run: python fetch_kline_em.py --date "${{ needs.prepare.outputs.run_date }}"
 
       - name: Run fetch_kline_bd.py
-        run: python fetch_kline_bd.py --date "$RUN_DATE"
+        run: python fetch_kline_bd.py --date "${{ needs.prepare.outputs.run_date }}"
 
       - name: Run fetch_kline_qq.py
-        run: python fetch_kline_qq.py --date "$RUN_DATE"
+        run: python fetch_kline_qq.py --date "${{ needs.prepare.outputs.run_date }}"
+
+      - name: Upload kline data
+        uses: actions/upload-artifact@v4
+        with:
+          name: kline-data-${{ needs.prepare.outputs.run_date }}
+          path: |
+            qq
+            ths
+            em
+            bd
+          if-no-files-found: warn
+
+  fetch-timesharing:
+    runs-on: ubuntu-latest
+    needs: prepare
+    timeout-minutes: 360
+    env:
+      TZ: Asia/Shanghai
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
 
       - name: Run fetch_timesharing_qq.py
-        run: python fetch_timesharing_qq.py --date "$RUN_DATE"
+        run: python fetch_timesharing_qq.py --date "${{ needs.prepare.outputs.run_date }}"
 
       - name: Run fetch_timesharing_ths.py
-        run: python fetch_timesharing_ths.py --date "$RUN_DATE"
+        run: python fetch_timesharing_ths.py --date "${{ needs.prepare.outputs.run_date }}"
+
+      - name: Upload timesharing data
+        uses: actions/upload-artifact@v4
+        with:
+          name: timesharing-data-${{ needs.prepare.outputs.run_date }}
+          path: |
+            qq_timesharing
+            ths_timesharing
+          if-no-files-found: warn
+
+  package-and-release:
+    runs-on: ubuntu-latest
+    needs: [prepare, fetch-kline, fetch-timesharing]
+    timeout-minutes: 30
+    steps:
+      - name: Download kline data
+        uses: actions/download-artifact@v4
+        with:
+          name: kline-data-${{ needs.prepare.outputs.run_date }}
+          path: .
+
+      - name: Download timesharing data
+        uses: actions/download-artifact@v4
+        with:
+          name: timesharing-data-${{ needs.prepare.outputs.run_date }}
+          path: .
 
       - name: Package data as zip
         run: |
           mkdir -p dist
-          ZIP_PATH="dist/daily-data-${RUN_DATE}.zip"
+          ZIP_PATH="dist/daily-data-${{ needs.prepare.outputs.run_date }}.zip"
           DATA_DIRS=""
-          for dir in qq qq_timesharing ths ths_timesharing em; do
+          for dir in qq qq_timesharing ths ths_timesharing em bd; do
             if [ -d "$dir" ]; then
               DATA_DIRS="$DATA_DIRS $dir"
             fi
@@ -70,28 +135,16 @@ jobs:
           zip -r "$ZIP_PATH" $DATA_DIRS
           echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
 
-      - name: Upload generated data
-        uses: actions/upload-artifact@v4
-        with:
-          name: daily-data-${{ steps.set-date.outputs.run_date }}
-          path: |
-            qq
-            qq_timesharing
-            ths
-            ths_timesharing
-            em
-          if-no-files-found: warn
-
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: data-${{ steps.set-date.outputs.run_date }}
-          release_name: Daily data ${{ steps.set-date.outputs.run_date }}
+          tag_name: data-${{ needs.prepare.outputs.run_date }}
+          release_name: Daily data ${{ needs.prepare.outputs.run_date }}
           body: |
-            自动抓取的每日数据，包含 qq/、qq_timesharing/、ths/、ths_timesharing/、em/ 目录下的 CSV，压缩为 daily-data-${{ steps.set-date.outputs.run_date }}.zip。
+            自动抓取的每日数据，包含 qq/、qq_timesharing/、ths/、ths_timesharing/、em/、bd/ 目录下的 CSV，压缩为 daily-data-${{ needs.prepare.outputs.run_date }}.zip。
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
@@ -100,6 +153,6 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ${{ env.ZIP_PATH }}
-          asset_name: daily-data-${{ steps.set-date.outputs.run_date }}.zip
+          asset_name: daily-data-${{ needs.prepare.outputs.run_date }}.zip
           asset_content_type: application/zip
 
