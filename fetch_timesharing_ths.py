@@ -13,12 +13,13 @@ from datetime import datetime, timedelta
 import argparse
 import time
 from typing import List, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class THSTimesharingFetcher:
     """同花顺分时数据抓取类"""
     
-    def __init__(self):
+    def __init__(self, workers: int = 10):
         self.base_url = "https://dq.10jqka.com.cn/interval_calculation/block_info/v1/get_time_sharing"
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -26,6 +27,7 @@ class THSTimesharingFetcher:
             "Accept": "*/*"
         }
         self.output_dir = os.path.join("data", "ths_timesharing")
+        self.workers = max(1, workers)
         
     def get_all_stock_codes(self) -> List[Dict[str, str]]:
         """获取全部A股股票代码列表（排除指数）"""
@@ -241,6 +243,17 @@ class THSTimesharingFetcher:
         """按单个日期抓取数据"""
         self.fetch_by_date_range(stock_codes, date, date)
     
+    def _fetch_single_stock(self, stock: Dict, trade_date: str) -> Optional[List[Dict]]:
+        code = stock['code']
+        market = stock['market']
+        timesharing_data = self.fetch_timesharing_data(code, market, trade_date)
+        if timesharing_data:
+            for record in timesharing_data:
+                record['code'] = code
+                record['market'] = market
+        time.sleep(0.05)
+        return timesharing_data
+    
     def fetch_by_date_range(self, stock_codes: List[Dict], start_date: str, end_date: str):
         """按日期区间抓取数据"""
         trade_days = self.get_trade_days(start_date, end_date)
@@ -253,25 +266,34 @@ class THSTimesharingFetcher:
             print(f"\n处理日期: {trade_date}")
             
             all_data = []
-            for stock in stock_codes:
-                code = stock['code']
-                market = stock['market']
-                name = stock.get('name', '')
-                
-                print(f"  抓取 {name}({code})...", end=' ')
-                timesharing_data = self.fetch_timesharing_data(code, market, trade_date)
-                
-                if timesharing_data:
-                    for record in timesharing_data:
-                        record['code'] = code
-                        record['market'] = market
-                    all_data.extend(timesharing_data)
-                    print(f"成功 ({len(timesharing_data)} 条)")
-                else:
-                    print("失败")
-                
-                time.sleep(0.5)
+            success = 0
+            failures = 0
             
+            with ThreadPoolExecutor(max_workers=self.workers) as executor:
+                future_to_stock = {
+                    executor.submit(self._fetch_single_stock, stock, trade_date): stock
+                    for stock in stock_codes
+                }
+                
+                for future in as_completed(future_to_stock):
+                    stock = future_to_stock[future]
+                    code = stock['code']
+                    name = stock.get('name', '')
+                    
+                    try:
+                        records = future.result()
+                        if records:
+                            all_data.extend(records)
+                            success += 1
+                            print(f"  {name}({code}) 成功 ({len(records)} 条)")
+                        else:
+                            failures += 1
+                            print(f"  {name}({code}) 无数据")
+                    except Exception as exc:
+                        failures += 1
+                        print(f"  {name}({code}) 异常: {exc}")
+            
+            print(f"  并发结果: 成功 {success} 只，失败 {failures} 只")
             if all_data:
                 filename = f"timesharing_{trade_date}.csv"
                 self.save_to_csv(all_data, filename)
@@ -288,6 +310,7 @@ def main():
     parser.add_argument('--end', type=str, help='结束日期，格式: YYYY-MM-DD')
     parser.add_argument('--codes', type=str, help='股票代码列表，逗号分隔，格式: 代码1,代码2 (需要配合--markets使用)')
     parser.add_argument('--markets', type=str, help='市场代码列表，逗号分隔，格式: 市场1,市场2 (需要配合--codes使用)')
+    parser.add_argument('--workers', type=int, default=10, help='并发线程数，默认10')
     
     args = parser.parse_args()
     
@@ -299,7 +322,7 @@ def main():
         print("错误: 请指定 --date 或 --start/--end")
         return
     
-    fetcher = THSTimesharingFetcher()
+    fetcher = THSTimesharingFetcher(workers=args.workers)
     
     if args.codes and args.markets:
         codes = [c.strip() for c in args.codes.split(',')]

@@ -69,13 +69,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
       - name: Run fetch_kline_em.py
-        run: python fetch_kline_em.py --date "${{ needs.prepare.outputs.run_date }}"
-      - name: Upload em data
-        uses: actions/upload-artifact@v4
-        with:
-          name: em-kline-${{ needs.prepare.outputs.run_date }}
-          path: data/em
-          if-no-files-found: warn
+        run: |
+          if [ -f fetch_kline_em.py ]; then
+            python fetch_kline_em.py --date "${{ needs.prepare.outputs.run_date }}" || true
+          else
+            echo "fetch_kline_em.py 不存在，跳过"
+          fi
 
   fetch-kline-bd:
     runs-on: ubuntu-latest
