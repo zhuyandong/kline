@@ -107,7 +107,7 @@ jobs:
   package-and-release:
     runs-on: ubuntu-latest
     needs: [prepare, fetch-kline-ths, fetch-kline-bd, fetch-kline-qq]
-    timeout-minutes: 30
+    timeout-minutes: 60
     if: always()
     env:
       GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
@@ -150,23 +150,28 @@ jobs:
       
       - name: Sync raw data to Gitee
         if: ${{ env.GITEE_TOKEN != '' }}
+        continue-on-error: true
+        timeout-minutes: 20
         env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           RUN_DATE: ${{ needs.prepare.outputs.run_date }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           rm -rf gitee-sync
-          git clone https://zhuyandong:${GITEE_TOKEN}@gitee.com/zhuyandong/kline_data.git gitee-sync
-          mkdir -p gitee-sync/data
-          rsync -a --delete data/ gitee-sync/data/
-          cd gitee-sync
-          git remote set-url origin https://zhuyandong:${GITEE_TOKEN}@gitee.com/zhuyandong/kline_data.git
-          git add data
-          if git diff --cached --quiet; then
-            echo "No data changes to sync to Gitee"
-          else
-            git commit -m "Update data ${RUN_DATE}"
-            git push origin HEAD
+          timeout 600 git clone --depth 1 https://zhuyandong:${GITEE_TOKEN}@gitee.com/zhuyandong/kline_data.git gitee-sync || (echo "Clone failed or timeout" && exit 0)
+          if [ -d gitee-sync ]; then
+            mkdir -p gitee-sync/data
+            rsync -a --compress --delete data/ gitee-sync/data/
+            cd gitee-sync
+            git remote set-url origin https://zhuyandong:${GITEE_TOKEN}@gitee.com/zhuyandong/kline_data.git
+            timeout 300 git add data || (echo "Add timeout" && exit 0)
+            if ! git diff --cached --quiet 2>/dev/null; then
+              timeout 300 git commit -m "Update data ${RUN_DATE}" || (echo "Commit timeout" && exit 0)
+              timeout 600 git push origin HEAD || (echo "Push timeout" && exit 0)
+            else
+              echo "No data changes to sync to Gitee"
+            fi
           fi
 
       - name: Create GitHub Release
