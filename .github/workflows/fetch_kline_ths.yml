@@ -163,6 +163,8 @@ jobs:
     needs: [prepare, fetch-kline-ths, fetch-kline-bd, fetch-kline-qq, fetch-timesharing-qq, fetch-timesharing-ths]
     timeout-minutes: 30
     if: always()
+    env:
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
     steps:
       - name: Download ths kline data
         if: needs.fetch-kline-ths.result == 'success'
@@ -213,9 +215,8 @@ jobs:
           echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
       
       - name: Sync raw data to Gitee
-        if: ${{ secrets.GITEE_TOKEN != '' }}
+        if: ${{ env.GITEE_TOKEN != '' }}
         env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
           RUN_DATE: ${{ needs.prepare.outputs.run_date }}
         run: |
           git config --global user.name "github-actions[bot]"
