@@ -2,7 +2,7 @@
 仓库每天北京时间 18:00 自动抓取同花顺、百度、腾讯等来源的数据，并在 GitHub Releases 发布压缩包：
 1. 打开仓库主页 → 进入 `Releases`。
 2. 找到日期形如 `Daily data YYYY-MM-DD` 的最新发布。
-3. 下载附件 `daily-data-YYYY-MM-DD.zip`，解压即可获得 `data/qq/`、`data/qq_timesharing/`、`data/ths/`、`data/ths_timesharing/`、`data/bd/` 等目录内的 CSV。
+3. 下载附件 `daily-data-YYYY-MM-DD.zip`，解压即可获得 `data/qq/`、`data/ths/`、`data/bd/` 等目录内的 CSV。
 如需重新生成某天的数据，可在 `Actions` 中手动运行 `Fetch Daily Data` 工作流，完成后会自动生成新的 Release。
 
 ## 数据字段说明
@@ -61,27 +61,3 @@
 - `ma20volume` - 20日均量
 - `market` - 市场代码
 - `timestamp` - 时间戳（秒）
-
-### 分时数据
-
-#### 腾讯 (QQ) - `data/qq_timesharing/timesharing_*.csv`
-- `date` - 交易日期时间（格式：YYYY-MM-DD HH:MM:SS）
-- `code` - 股票代码
-- `price` - 最新价
-- `open` - 开盘价
-- `high` - 最高价
-- `low` - 最低价
-- `volume` - 成交量
-- `pre_close` - 前收盘价
-- `change` - 涨跌额
-- `change_percent` - 涨跌幅
-- `market` - 市场代码
-
-#### 同花顺 (THS) - `data/ths_timesharing/timesharing_*.csv`
-- `date` - 交易日期时间（格式：YYYY-MM-DD HH:MM:SS）
-- `code` - 股票代码
-- `price` - 最新价
-- `pre_close` - 前收盘价
-- `change` - 涨跌额
-- `change_percent` - 涨跌幅
-- `market` - 市场代码

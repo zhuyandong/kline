@@ -104,63 +104,9 @@ jobs:
           path: data/qq
           if-no-files-found: warn
 
-  fetch-timesharing-qq:
-    runs-on: ubuntu-latest
-    needs: prepare
-    continue-on-error: true
-    timeout-minutes: 360
-    env:
-      TZ: Asia/Shanghai
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
-      - name: Run fetch_timesharing_qq.py
-        run: python fetch_timesharing_qq.py --date "${{ needs.prepare.outputs.run_date }}"
-      - name: Upload qq timesharing data
-        uses: actions/upload-artifact@v4
-        with:
-          name: qq-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: data/qq_timesharing
-          if-no-files-found: warn
-
-  fetch-timesharing-ths:
-    runs-on: ubuntu-latest
-    needs: prepare
-    continue-on-error: true
-    timeout-minutes: 360
-    env:
-      TZ: Asia/Shanghai
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
-      - name: Run fetch_timesharing_ths.py
-        run: python fetch_timesharing_ths.py --date "${{ needs.prepare.outputs.run_date }}"
-      - name: Upload ths timesharing data
-        uses: actions/upload-artifact@v4
-        with:
-          name: ths-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: data/ths_timesharing
-          if-no-files-found: warn
-
   package-and-release:
     runs-on: ubuntu-latest
-    needs: [prepare, fetch-kline-ths, fetch-kline-bd, fetch-kline-qq, fetch-timesharing-qq, fetch-timesharing-ths]
+    needs: [prepare, fetch-kline-ths, fetch-kline-bd, fetch-kline-qq]
     timeout-minutes: 30
     if: always()
     env:
@@ -184,25 +130,13 @@ jobs:
         with:
           name: qq-kline-${{ needs.prepare.outputs.run_date }}
           path: data/qq
-      - name: Download qq timesharing data
-        if: needs.fetch-timesharing-qq.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: qq-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: data/qq_timesharing
-      - name: Download ths timesharing data
-        if: needs.fetch-timesharing-ths.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: ths-timesharing-${{ needs.prepare.outputs.run_date }}
-          path: data/ths_timesharing
 
       - name: Package data as zip
         run: |
           mkdir -p dist
           ZIP_PATH="dist/daily-data-${{ needs.prepare.outputs.run_date }}.zip"
           DATA_DIRS=""
-          for dir in data/qq data/qq_timesharing data/ths data/ths_timesharing data/bd; do
+          for dir in data/qq data/ths data/bd; do
             if [ -d "$dir" ]; then
               DATA_DIRS="$DATA_DIRS $dir"
             fi
@@ -243,7 +177,7 @@ jobs:
           tag_name: data-${{ needs.prepare.outputs.run_date }}
           release_name: Daily data ${{ needs.prepare.outputs.run_date }}
           body: |
-            自动抓取的每日数据，包含 data/qq/、data/qq_timesharing/、data/ths/、data/ths_timesharing/、data/bd/ 目录下的 CSV，压缩为 daily-data-${{ needs.prepare.outputs.run_date }}.zip。
+            自动抓取的每日数据，包含 data/qq/、data/ths/、data/bd/ 目录下的 CSV，压缩为 daily-data-${{ needs.prepare.outputs.run_date }}.zip。
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1

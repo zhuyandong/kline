@@ -14,8 +14,6 @@ DEFAULT_SCRIPTS = [
     ("fetch_kline_ths.py", "THS K线"),
     ("fetch_kline_qq.py", "QQ K线"),
     ("fetch_kline_bd.py", "BD K线"),
-    ("fetch_timesharing_qq.py", "QQ 分时"),
-    ("fetch_timesharing_ths.py", "THS 分时"),
 ]
 
 
