@@ -211,6 +211,27 @@ jobs:
           fi
           zip -r "$ZIP_PATH" $DATA_DIRS
           echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
+      
+      - name: Sync raw data to Gitee
+        if: ${{ secrets.GITEE_TOKEN != '' }}
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          RUN_DATE: ${{ needs.prepare.outputs.run_date }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          rm -rf gitee-sync
+          git clone https://${GITEE_TOKEN}@gitee.com/zhuyandong/kline_data.git gitee-sync
+          mkdir -p gitee-sync/data
+          rsync -a --delete data/ gitee-sync/data/
+          cd gitee-sync
+          git add data
+          if git diff --cached --quiet; then
+            echo "No data changes to sync to Gitee"
+          else
+            git commit -m "Update data ${RUN_DATE}"
+            git push origin HEAD
+          fi
 
       - name: Create GitHub Release
         id: create_release
