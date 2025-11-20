@@ -160,6 +160,7 @@ jobs:
           mkdir -p gitee-sync/data
           rsync -a --delete data/ gitee-sync/data/
           cd gitee-sync
+          git remote set-url origin https://${GITEE_TOKEN}@gitee.com/zhuyandong/kline_data.git
           git add data
           if git diff --cached --quiet; then
             echo "No data changes to sync to Gitee"
