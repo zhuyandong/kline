@@ -34,31 +34,49 @@ class THSKlineFetcher:
         
     def get_all_stock_codes(self) -> List[Dict[str, str]]:
         """获取全部股票代码列表（包括指数和特殊分类）"""
+        CACHE_FILE = os.path.join("data", "all_codes_cache.json")
+        url = "https://ozone.10jqka.com.cn/tg_templates/doubleone/datacenter/data/all_codes.txt"
+        headers = {
+            "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                           "AppleWebKit/537.36 (KHTML, like Gecko) "
+                           "Chrome/118.0.0.0 Safari/537.36"),
+            "Referer": "https://www.10jqka.com.cn/",
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive"
+        }
         try:
-            url = "https://ozone.10jqka.com.cn/tg_templates/doubleone/datacenter/data/all_codes.txt"
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
             response.encoding = 'utf-8'
             data = json.loads(response.text)
-            
-            stock_list = []
-            # 采集所有市场代码：16=上证指数, 17=上海A股, 22=上海特殊股票, 32=深证指数, 33=深圳A股
-            
-            for market_code, stocks in data.items():
-                for stock in stocks:
-                    if len(stock) >= 2:
-                        stock_list.append({
-                            'code': stock[0],
-                            'market': market_code,
-                            'name': stock[1] if len(stock) > 1 else ''
-                        })
-            
-            print(f"获取到 {len(stock_list)} 只股票（包括指数和特殊分类）")
-            return stock_list
+            os.makedirs("data", exist_ok=True)
+            with open(CACHE_FILE, "w", encoding="utf-8") as cache_fp:
+                json.dump(data, cache_fp, ensure_ascii=False)
         except Exception as e:
             print(f"获取股票代码列表失败: {e}")
-            import traceback
-            traceback.print_exc()
-            return []
+            if os.path.exists(CACHE_FILE):
+                print("尝试使用缓存的股票列表...")
+                with open(CACHE_FILE, "r", encoding="utf-8") as cache_fp:
+                    data = json.load(cache_fp)
+            else:
+                import traceback
+                traceback.print_exc()
+                return []
+        
+        stock_list = []
+        for market_code, stocks in data.items():
+            for stock in stocks:
+                if len(stock) >= 2:
+                    stock_list.append({
+                        'code': stock[0],
+                        'market': market_code,
+                        'name': stock[1] if len(stock) > 1 else ''
+                    })
+        
+        print(f"获取到 {len(stock_list)} 只股票（包括指数和特殊分类）")
+        return stock_list
     
     def date_to_timestamp(self, date_str: str) -> int:
         """将日期字符串转换为时间戳（秒）"""
