@@ -43,37 +43,13 @@ class QQKlineFetcher:
         return self.ths_fetcher
         
     def get_all_stock_codes(self) -> List[Dict[str, str]]:
-        """获取全部A股股票代码列表（复用同花顺接口，并支持缓存）"""
-        CACHE_FILE = os.path.join("data", "all_codes_cache.json")
+        """获取全部A股股票代码列表（复用同花顺接口）"""
         ths_fetcher = self._get_ths_fetcher()
-        if not ths_fetcher:
-            if os.path.exists(CACHE_FILE):
-                print("警告: 使用缓存的股票代码列表")
-                with open(CACHE_FILE, "r", encoding="utf-8") as cache_fp:
-                    cached = json.load(cache_fp)
-                return [
-                    {'code': stock[0], 'market': market_code, 'name': stock[1] if len(stock) > 1 else ''}
-                    for market_code, stocks in cached.items()
-                    for stock in stocks if len(stock) >= 2
-                ]
+        if ths_fetcher:
+            return ths_fetcher.get_all_stock_codes()
+        else:
             print("错误: 无法获取股票代码列表")
             return []
-        
-        codes = ths_fetcher.get_all_stock_codes()
-        # ths_fetcher 中已缓存 JSON，但这里为了稳妥再保存一次
-        os.makedirs("data", exist_ok=True)
-        try:
-            with open(CACHE_FILE, "w", encoding="utf-8") as cache_fp:
-                # 需要的是原始 JSON 结构，ths_fetcher 没有直接提供，
-                # 因此使用 codes 列表构建一个市场->股票的映射来缓存
-                market_map: Dict[str, List[List[str]]] = {}
-                for item in codes:
-                    market_map.setdefault(item['market'], []).append([item['code'], item.get('name', '')])
-                json.dump(market_map, cache_fp, ensure_ascii=False)
-        except Exception as cache_err:
-            print(f"缓存股票代码失败: {cache_err}")
-        
-        return codes
     
     def convert_market_code(self, ths_market: str, stock_code: str = None) -> str:
         """将同花顺市场代码转换为腾讯市场代码"""

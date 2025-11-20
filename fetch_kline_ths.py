@@ -34,7 +34,6 @@ class THSKlineFetcher:
         
     def get_all_stock_codes(self) -> List[Dict[str, str]]:
         """获取全部股票代码列表（包括指数和特殊分类）"""
-        CACHE_FILE = os.path.join("data", "all_codes_cache.json")
         url = "https://ozone.10jqka.com.cn/tg_templates/doubleone/datacenter/data/all_codes.txt"
         headers = {
             "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -51,19 +50,11 @@ class THSKlineFetcher:
             response.raise_for_status()
             response.encoding = 'utf-8'
             data = json.loads(response.text)
-            os.makedirs("data", exist_ok=True)
-            with open(CACHE_FILE, "w", encoding="utf-8") as cache_fp:
-                json.dump(data, cache_fp, ensure_ascii=False)
         except Exception as e:
             print(f"获取股票代码列表失败: {e}")
-            if os.path.exists(CACHE_FILE):
-                print("尝试使用缓存的股票列表...")
-                with open(CACHE_FILE, "r", encoding="utf-8") as cache_fp:
-                    data = json.load(cache_fp)
-            else:
-                import traceback
-                traceback.print_exc()
-                return []
+            import traceback
+            traceback.print_exc()
+            return []
         
         stock_list = []
         for market_code, stocks in data.items():
