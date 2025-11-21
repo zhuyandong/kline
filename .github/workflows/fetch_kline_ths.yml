@@ -175,23 +175,13 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: data-${{ needs.prepare.outputs.run_date }}
-          release_name: Daily data ${{ needs.prepare.outputs.run_date }}
+          name: Daily data ${{ needs.prepare.outputs.run_date }}
           body: |
             自动抓取的每日数据，包含 data/qq/、data/ths/、data/bd/ 目录下的 CSV，压缩为 daily-data-${{ needs.prepare.outputs.run_date }}.zip。
-
-      - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.ZIP_PATH }}
-          asset_name: daily-data-${{ needs.prepare.outputs.run_date }}.zip
-          asset_content_type: application/zip
+          files: ${{ env.ZIP_PATH }}
 
