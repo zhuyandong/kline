@@ -8,8 +8,9 @@
 import argparse
 import csv
 import os
+import random
+import time
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -20,7 +21,6 @@ class BDKlineFetcher:
     def __init__(self, max_workers: int = 10, history_limit: int = 640):
         self.base_url = "https://finance.pae.baidu.com/selfselect/getstockquotation"
         self.output_dir = os.path.join("data", "bd")
-        self.max_workers = max_workers
         self.history_limit = history_limit
         self.session = requests.Session()
         self.session.headers.update(
@@ -246,33 +246,28 @@ class BDKlineFetcher:
             success = 0
             failures = 0
 
-            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                future_to_stock = {
-                    executor.submit(self._fetch_single_stock, stock, trade_date): stock
-                    for stock in stock_codes
-                }
+            for stock in stock_codes:
+                code = stock["code"]
+                name = stock.get("name", "")
+                try:
+                    result = self._fetch_single_stock(stock, trade_date)
+                except Exception as exc:  # noqa: BLE001
+                    failures += 1
+                    print(f"  {name}({code}) 异常: {exc}")
+                    time.sleep(random.uniform(2.0, 4.0))
+                    continue
 
-                for future in as_completed(future_to_stock):
-                    stock = future_to_stock[future]
-                    code = stock["code"]
-                    name = stock.get("name", "")
+                if result:
+                    all_data.extend(result)
+                    success += 1
+                    print(f"  {name}({code}) 成功 ({len(result)} 条)")
+                else:
+                    failures += 1
+                    print(f"  {name}({code}) 无数据")
 
-                    try:
-                        result = future.result()
-                    except Exception as exc:  # noqa: BLE001
-                        failures += 1
-                        print(f"  {name}({code}) 异常: {exc}")
-                        continue
+                time.sleep(random.uniform(2.0, 4.0))
 
-                    if result:
-                        all_data.extend(result)
-                        success += 1
-                        print(f"  {name}({code}) 成功 ({len(result)} 条)")
-                    else:
-                        failures += 1
-                        print(f"  {name}({code}) 无数据")
-
-            print(f"  并发结果: 成功 {success} 只，失败 {failures} 只")
+            print(f"  抓取结果: 成功 {success} 只，失败 {failures} 只")
 
             if all_data:
                 filename = f"kline_{trade_date}.csv"
