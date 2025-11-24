@@ -219,11 +219,7 @@ class QQKlineFetcher:
             return None
     
     def save_to_csv(self, data: List[Dict], filename: str):
-        """保存数据到CSV文件"""
-        if not data:
-            print(f"无数据可保存: {filename}")
-            return
-        
+        """保存数据到CSV文件（即便无数据也生成占位行）"""
         os.makedirs(self.output_dir, exist_ok=True)
         filepath = os.path.join(self.output_dir, filename)
         
@@ -233,22 +229,28 @@ class QQKlineFetcher:
             'turnover', 'outstanding_share', 'market', 'timestamp'
         ]
         
-        all_keys = set()
-        for item in data:
-            all_keys.update(item.keys())
-        
-        fieldnames = []
-        for field in preferred_order:
-            if field in all_keys:
-                fieldnames.append(field)
-        for field in sorted(all_keys):
-            if field not in fieldnames:
-                fieldnames.append(field)
+        if data:
+            all_keys = set()
+            for item in data:
+                all_keys.update(item.keys())
+            
+            fieldnames = []
+            for field in preferred_order:
+                if field in all_keys:
+                    fieldnames.append(field)
+            for field in sorted(all_keys):
+                if field not in fieldnames:
+                    fieldnames.append(field)
+        else:
+            fieldnames = preferred_order[:]
         
         with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(data)
+            if data:
+                writer.writerows(data)
+            else:
+                writer.writerow({fieldnames[0]: "获取到0条数据"})
         
         print(f"已保存: {filepath} ({len(data)} 条记录)")
     
