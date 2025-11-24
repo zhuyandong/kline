@@ -281,10 +281,6 @@ class BDKlineFetcher:
 
     def save_to_csv(self, data: List[Dict], filename: str):
         """保存数据到CSV文件"""
-        if not data:
-            print(f"无数据可保存: {filename}")
-            return
-
         os.makedirs(self.output_dir, exist_ok=True)
         filepath = os.path.join(self.output_dir, filename)
 
@@ -322,7 +318,10 @@ class BDKlineFetcher:
         with open(filepath, "w", newline="", encoding="utf-8-sig") as fp:
             writer = csv.DictWriter(fp, fieldnames=fieldnames)
             writer.writeheader()
-            writer.writerows(data)
+            if data:
+                writer.writerows(data)
+            else:
+                writer.writerow({"time": "获取到0条数据"})
 
         print(f"已保存: {filepath} ({len(data)} 条记录)")
 
